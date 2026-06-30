@@ -1,0 +1,7 @@
+.env
+catalog.db
+catalog.db-journal
+venv/
+/nono
+database/__pycache__/
+database/fetcher1time_cache.json
