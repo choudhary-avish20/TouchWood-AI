@@ -1,7 +1,5 @@
 .env
 data
 venv
-nono
 database/__pycache__/
 database/fetcher1time_cache.json
-database/schemaDB.ipynb
