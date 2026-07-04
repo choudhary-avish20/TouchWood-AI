@@ -1,5 +1,6 @@
 .env
 data
 venv
-database/__pycache__/
+__pycache__/
 database/fetcher1time_cache.json
+test/

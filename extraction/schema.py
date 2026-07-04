@@ -1,9 +1,6 @@
 """
 RoomState schema — the structured output of the extraction layer.
 
-Designed to map almost 1:1 onto retrieval.RetrievalQuery, so building a
-query from a RoomState (or one of its ItemRequests) is a near-direct
-field copy, not a translation step.
 """
 
 from __future__ import annotations
@@ -35,13 +32,13 @@ class RoomState(BaseModel):
     state_merge.py folds it into the running state in code, not via the LLM.
     """
 
-    room_type: str | None = None                     # e.g. "bedroom", "living room"
-    width_cm: float | None = None                     # room dimensions, not item dimensions
+    room_type: str | None = None
+    width_cm: float | None = None
     length_cm: float | None = None
-    existing_items: list[str] = Field(default_factory=list)   # e.g. ["queen bed", "wooden desk"]
-    style_tags: list[str] = Field(default_factory=list)       # constrained to tagger.ALLOWED_STYLE_TAGS at validation time
-    style_text: str | None = None                     # free-form theme description, e.g. "cozy, warm, a bit rustic"
-    budget_total: float | None = None                 # overall budget, distinct from per-item max_price
+    existing_items: list[str] = Field(default_factory=list)
+    style_tags: list[str] = Field(default_factory=list)
+    style_text: str | None = None
+    budget_total: float | None = None   
     item_requests: list[ItemRequest] = Field(default_factory=list)
 
     class Config:

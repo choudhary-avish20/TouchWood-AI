@@ -1,13 +1,6 @@
 """
 Extraction layer — calls a local Ollama model to turn a user's free-text
 room description into a RoomState delta (Pydantic-validated JSON).
-
-This mirrors catalog/tagger.py's call pattern deliberately (same Ollama
-endpoint, same defensive JSON parsing) since both are "small structured
-extraction" jobs running on the same local model.
-
-Returns a *delta*, not the full session state — state_merge.py is
-responsible for folding this into the running RoomState in code.
 """
 
 import json
@@ -114,10 +107,6 @@ def _extract_json_object(text: str) -> dict | None:
 def extract_room_state(user_text: str) -> RoomState:
     """
     Calls the local Ollama model and returns a validated RoomState delta.
-    On any failure (connection error, malformed JSON, validation error),
-    returns an empty RoomState rather than raising — a failed extraction
-    on one turn shouldn't crash the conversation; the caller just gets
-    no new information to merge that turn.
     """
     try:
         response = requests.post(
@@ -127,8 +116,8 @@ def extract_room_state(user_text: str) -> RoomState:
                 "system": SYSTEM_PROMPT,
                 "prompt": user_text,
                 "stream": False,
-                "format": "json",  # ask Ollama to constrain output to valid JSON where supported
-                "options": {"temperature": 0.1},  # low temp: extraction wants consistency, not creativity
+                "format": "json",  # constrain output to valid JSON
+                "options": {"temperature": 0.1},
             },
             timeout=30,
         )

@@ -11,6 +11,11 @@ Usage:
 """
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Paths
 
@@ -48,8 +53,6 @@ EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 # Anthropic API (recommendation layer)
 
-# API key is read by the Anthropic SDK automatically from ANTHROPIC_API_KEY.
-
 ANTHROPIC_MODEL: str = os.getenv(
     "ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"
 )
@@ -58,7 +61,6 @@ ANTHROPIC_MAX_TOKENS: int = int(os.getenv("ANTHROPIC_MAX_TOKENS", "600"))
 
 # Retrieval
 
-# Default number of candidates returned per item request.
 RETRIEVAL_TOP_K: int = int(os.getenv("RETRIEVAL_TOP_K", "8"))
 
 # State merge
