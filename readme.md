@@ -2,18 +2,18 @@
 
 ## Goal
 
-Build an AI-powered interior design platform that recommends products based on user input and creates an efficient RAG (Retrieval-Augmented Generation) pipeline.
+Build an AI-powered interior design platform that helps users discover, evaluate, and refine interior design recommendations through conversational interaction, retrieval-based product matching, and a future-ready visual experience.
 
-## Current Work
+## Current Progress
 
-- Data ingestion and schema design for interior design assets and product information.
-- Embeddings generation and database schema setup for retrieval and semantic search.
-- Initial caching and fetcher utilities to support dataset loading and preprocessing.
-- Parsing and tagging utilities for product dimensions, style, and catalog metadata.
+- Designed the core data model and schema for interior design assets, product information, and recommendation context.
+- Built the ingestion pipeline for loading and organizing catalog data.
+- Implemented embedding generation and database setup to support semantic retrieval and search.
+- Added utilities for parsing product metadata, dimensions, styles, and catalog tags.
+- Developed an initial recommendation flow that connects user context and retrieved products to an LLM for response generation.
+- Established the foundation for session-aware conversation handling and structured room-state understanding.
 
-## Future Steps
+## Future Scope
 
-- Create the **retrieval layer** to serve relevant content for user queries.
-- Attach the responding LLM to generate answers and recommendations from retrieved context.
-- Implement context management to preserve conversation state and ensure coherent responses.
-- Develop a frontend to enable intuitive user interaction with the platform.
+- Add a front-end layer with an interactive user experience for chatting with the assistant, browsing recommendations, and refining preferences.
+- Introduce sketching and visual planning features so users can express design ideas and receive product suggestions based on their layout or mood.
