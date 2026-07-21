@@ -2,58 +2,37 @@
 state_merge.py — deterministic fold of an extracted RoomState delta
 into the running session RoomState.
 
-Why code, not LLM:
-  Merging structured state is a deterministic problem — scalar override,
-  list union, dedup. Adding an LLM here would add latency and cost for
-  zero benefit. The LLM's job (extraction) ends at producing the delta;
-  the code's job starts at integrating it.
-
 Merge rules by field type:
-  Scalars   (room_type, width_cm, length_cm, style_text, budget_total)
-            → delta value wins when it's not None (newer info overrides)
-  Lists     (style_tags, existing_items)
-            → ordered union: keep existing order, append new entries only
-  item_requests
-            → append new requests; deduplicate against existing ones by
-              fuzzy-matching raw_phrase (see _is_duplicate_request).
-              Never drops an existing request — only the incoming delta's
-              requests are filtered.
+    Scalars      → delta wins when not None
+    Lists        → ordered union (existing_items, style_tags)
+    placed_items → merge by name: update placement if item already known,
+                    append if new. Never removes an existing entry.
+    item_requests → append deduplicated new requests (Jaccard on raw_phrase)
 """
 
 from __future__ import annotations
 
-from extraction.schema import ItemRequest, RoomState
+import re
+from extraction.schema import ItemRequest, PlacedItem, RoomState
 
-# Deduplication threshold for item_requests.
-# Two requests are considered the same if their normalised raw_phrases
-# share this many tokens as a fraction of the shorter phrase.
-# 0.6 catches "a lamp" vs "some kind of lamp" while keeping
-# "floor lamp" vs "desk lamp" separate.
 _PHRASE_SIMILARITY_THRESHOLD = 0.6
 
 
 def _normalise(phrase: str) -> set[str]:
-    """Lowercase word-token set, strips punctuation."""
-    import re
     return set(re.findall(r"[a-z]+", phrase.lower()))
 
 
 def _is_duplicate_request(incoming: ItemRequest, existing: ItemRequest) -> bool:
-    """True if `incoming` is close enough to `existing` that adding it
-    would be redundant. Operates on raw_phrase only — categories may
-    differ if extraction was inconsistent across turns."""
     if not incoming.raw_phrase or not existing.raw_phrase:
         return False
     a = _normalise(incoming.raw_phrase)
     b = _normalise(existing.raw_phrase)
     if not a or not b:
         return False
-    overlap = len(a & b) / len(a | b)  # Jaccard similarity
-    return overlap >= _PHRASE_SIMILARITY_THRESHOLD
+    return len(a & b) / len(a | b) >= _PHRASE_SIMILARITY_THRESHOLD
 
 
 def _merge_lists(existing: list, incoming: list) -> list:
-    """Ordered union: keep existing order, append novel entries only."""
     seen = set(existing)
     result = list(existing)
     for item in incoming:
@@ -63,29 +42,68 @@ def _merge_lists(existing: list, incoming: list) -> list:
     return result
 
 
+def _merge_placed_items(
+    existing: list[PlacedItem],
+    incoming: list[PlacedItem],
+) -> list[PlacedItem]:
+    """
+    Merge strategy:
+    - If an item with the same name already exists, update its placement
+        fields with the incoming delta (newer info wins — the user just
+        corrected or added detail).
+    - If the name is new, append it.
+    - Name matching is case-insensitive.
+    """
+    result = {p.name.lower(): p for p in existing}
+
+    for new_item in incoming:
+        key = new_item.name.lower()
+        if key in result:
+            existing_item = result[key]
+            result[key] = PlacedItem(
+                name=existing_item.name,
+                wall=new_item.wall if new_item.wall is not None else existing_item.wall,
+                corner=new_item.corner if new_item.corner is not None else existing_item.corner,
+                raw_hint=new_item.raw_hint if new_item.raw_hint else existing_item.raw_hint,
+            )
+        else:
+            result[key] = new_item
+
+    return list(result.values())
+
+
 def _merge_item_requests(
     existing: list[ItemRequest],
     incoming: list[ItemRequest],
 ) -> list[ItemRequest]:
     result = list(existing)
     for new_req in incoming:
-        is_dup = any(_is_duplicate_request(new_req, ex) for ex in result)
-        if not is_dup:
+        if not any(_is_duplicate_request(new_req, ex) for ex in result):
             result.append(new_req)
     return result
 
 
 def merge(current: RoomState, delta: RoomState) -> RoomState:
+    """
+    Returns a new RoomState applying delta on top of current.
+    Neither argument is mutated.
+    """
     return RoomState(
+        # Scalars: delta wins when not None
         room_type=delta.room_type if delta.room_type is not None else current.room_type,
         width_cm=delta.width_cm if delta.width_cm is not None else current.width_cm,
         length_cm=delta.length_cm if delta.length_cm is not None else current.length_cm,
         style_text=delta.style_text if delta.style_text is not None else current.style_text,
         budget_total=delta.budget_total if delta.budget_total is not None else current.budget_total,
 
+        # Lists: ordered union
         existing_items=_merge_lists(current.existing_items, delta.existing_items),
         style_tags=_merge_lists(current.style_tags, delta.style_tags),
 
+        # placed_items: update by name, append new
+        placed_items=_merge_placed_items(current.placed_items, delta.placed_items),
+
+        # item_requests: append deduplicated
         item_requests=_merge_item_requests(current.item_requests, delta.item_requests),
     )
 
@@ -94,17 +112,6 @@ def clear_fulfilled_requests(
     state: RoomState,
     fulfilled_raw_phrases: list[str],
 ) -> RoomState:
-    """
-    Drops item_requests that have already been fulfilled (i.e. the
-    recommender has surfaced results for them). Call this after each
-    recommendation round so those requests don't keep triggering
-    retrieval on subsequent turns.
-
-    Args:
-        state:                 The current session RoomState.
-        fulfilled_raw_phrases: raw_phrase values of requests that have
-                               been recommended for this turn.
-    """
     fulfilled_normalised = [_normalise(p) for p in fulfilled_raw_phrases]
 
     def _is_fulfilled(req: ItemRequest) -> bool:
@@ -120,38 +127,39 @@ def clear_fulfilled_requests(
     return state.model_copy(update={"item_requests": remaining})
 
 
+# ---------------------------------------------------------------------------
+# Self-test — python -m extraction.state_merge
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    from extraction.schema import ItemRequest, RoomState
+    from extraction.schema import ItemRequest, PlacedItem, RoomState
 
     turn_1 = RoomState(
-        room_type="bedroom",
-        width_cm=304.8,
-        length_cm=365.8,
-        existing_items=["queen bed", "wooden desk"],
-        style_tags=["minimalist"],
-        style_text="warm and cozy",
-        item_requests=[
-            ItemRequest(raw_phrase="a rug", max_price=500.0),
-            ItemRequest(raw_phrase="a lamp"),
+        room_type="living room",
+        width_cm=500,
+        length_cm=400,
+        existing_items=["sofa", "tv unit", "coffee table"],
+        placed_items=[
+            PlacedItem(name="sofa", wall="south", raw_hint="sofa against the south wall"),
+            PlacedItem(name="tv unit", wall="north", raw_hint="tv unit on the north wall"),
         ],
+        style_tags=["bohemian"],
+        item_requests=[ItemRequest(raw_phrase="some cushions")],
     )
 
+    # Turn 2: user clarifies coffee table position, adds a new item
     turn_2_delta = RoomState(
-        budget_total=2000.0,
-        style_tags=["scandinavian"],
-        existing_items=["queen bed"],
+        existing_items=["coffee table", "bookshelf"],
+        placed_items=[
+            PlacedItem(name="coffee table", corner="south-west", raw_hint="coffee table in the south-west corner"),
+            PlacedItem(name="bookshelf", wall="east", raw_hint="bookshelf on the east wall"),
+        ],
+        style_tags=["eclectic"],
         item_requests=[
-            ItemRequest(raw_phrase="some kind of lamp"),
-            ItemRequest(raw_phrase="a vase for the shelf"),
+            ItemRequest(raw_phrase="some cushions"),   # dup — should be dropped
+            ItemRequest(raw_phrase="a floor lamp"),    # new — should be added
         ],
     )
 
     merged = merge(turn_1, turn_2_delta)
-
     print("=== merged state ===")
     print(merged.model_dump_json(indent=2))
-
-    print("\n=== after fulfilling 'a rug' ===")
-    after = clear_fulfilled_requests(merged, fulfilled_raw_phrases=["a rug"])
-    for r in after.item_requests:
-        print(" -", r.raw_phrase)
