@@ -80,7 +80,7 @@ APP_DEBUG: bool = os.getenv("APP_DEBUG", "false").lower() == "true"
 
 _raw_origins = os.getenv(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000"
+    "http://localhost:3000,http://localhost:5173,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080"
 )
 CORS_ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 

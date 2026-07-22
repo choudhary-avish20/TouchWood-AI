@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.catalog_mapper import load_categories
 from app.routes import router
-from config import APP_DEBUG, CORS_ALLOWED_ORIGINS
+from config import APP_DEBUG
 
 
 
@@ -38,8 +38,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],   # open for local dev — tighten for production
     allow_methods=["*"],
     allow_headers=["*"],
 )

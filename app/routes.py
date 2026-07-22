@@ -14,6 +14,8 @@ flow: IMP
 
 from __future__ import annotations
 
+import dataclasses
+
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
@@ -39,6 +41,7 @@ class ChatResponse(BaseModel):
     session_id: str
     response: str
     room_state: dict
+    products: list[dict] = []
 
 
 # Helpers
@@ -118,10 +121,19 @@ async def chat(
     )
     session.add_turn(body.message, response_text)
 
+    # Flatten all retrieved candidates into a single products list for the
+    # frontend recommendations panel. Only included when products were actually
+    # retrieved this turn (shortlists non-empty with at least one result).
+    products: list[dict] = []
+    for _req, candidates in shortlists:
+        for item in candidates:
+            products.append(dataclasses.asdict(item))
+
     return ChatResponse(
         session_id=session_id,
         response=response_text,
         room_state=session.room_state.model_dump(),
+        products=products,
     )
 
 
